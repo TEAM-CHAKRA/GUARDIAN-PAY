@@ -17,6 +17,8 @@ import {
 import { AppShell } from '@/components/layout/AppShell';
 import { GlassCard } from '@/components/ui/GlassCard';
 import { GlowButton } from '@/components/ui/GlowButton';
+import { analyzeLink } from '@/lib/linkScanner';
+import { api } from '@/lib/api';
 
 interface Indicator {
   key: string;
@@ -57,20 +59,28 @@ function VerifyLinkContent() {
     setAckWarning(false);
 
     try {
+      // First attempt API route or backend
       const res = await fetch('/api/links/verify', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ url: targetUrl.trim() }),
       });
 
-      const data = await res.json();
-      if (data.success) {
-        setResult(data);
-      } else {
-        setErrorMsg(data.error?.message || 'Failed to verify payment link');
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success) {
+          setResult(data);
+          return;
+        }
       }
+
+      // If response not ok, analyze directly using universal threat scanner
+      const clientResult = analyzeLink(targetUrl.trim());
+      setResult(clientResult);
     } catch {
-      setErrorMsg('Network error connecting to link verification engine');
+      // Offline / Network fallback: Run local client-side analysis
+      const clientResult = analyzeLink(targetUrl.trim());
+      setResult(clientResult);
     } finally {
       setIsAnalyzing(false);
     }

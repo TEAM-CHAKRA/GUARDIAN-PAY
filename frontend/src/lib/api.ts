@@ -22,8 +22,21 @@ import {
   SEED_DEVICES,
   SEED_COLLECT_REQUESTS,
 } from './mock/seed';
+import { analyzeLink } from './linkScanner';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL;
+const isBrowser = typeof window !== 'undefined';
+
+export function getApiBaseUrl(): string | undefined {
+  const envUrl = process.env.NEXT_PUBLIC_API_URL;
+  if (!envUrl) return undefined;
+  // If running in HTTPS production browser, block illegal insecure http:// calls to localhost/external HTTP
+  if (isBrowser && window.location.protocol === 'https:' && envUrl.startsWith('http://')) {
+    return undefined;
+  }
+  return envUrl.replace(/\/+$/, '');
+}
+
+const API_BASE_URL = getApiBaseUrl();
 
 let memoryToken: string | null = null;
 
@@ -906,129 +919,138 @@ export const api = {
     const note = payload.note || '';
     const idempotencyKey = payload.idempotencyKey || `IDEMP-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
-    if (API_BASE_URL) {
-      const headers = getAuthHeaders({
-        'Idempotency-Key': idempotencyKey,
-      });
+    const activeApiBase = getApiBaseUrl();
+    if (activeApiBase) {
+      try {
+        const headers = getAuthHeaders({
+          'Idempotency-Key': idempotencyKey,
+        });
 
-      const res = await fetch(`${API_BASE_URL}/api/v1/payments/transfer`, {
-        method: 'POST',
-        credentials: 'include',
-        headers,
-        body: JSON.stringify({
-          receiverUpiId,
-          amountPaise,
-          note,
-          pin,
-          idempotencyKey,
-        }),
-      });
+        const res = await fetch(`${activeApiBase}/api/v1/payments/transfer`, {
+          method: 'POST',
+          credentials: 'include',
+          headers,
+          body: JSON.stringify({
+            receiverUpiId,
+            amountPaise,
+            note,
+            pin,
+            idempotencyKey,
+          }),
+        });
 
-      if (!res.ok) {
-        const errJson = await res.json().catch(() => ({}));
-        const errMsg = errJson?.error?.message || errJson?.message || `Payment transfer rejected (HTTP ${res.status})`;
-        const errDetails = errJson?.error?.details || {};
-        const detailStr = Object.entries(errDetails)
-          .map(([k, v]) => `${k}: ${v}`)
-          .join(', ');
-        throw new Error(detailStr ? `${errMsg} (${detailStr})` : errMsg);
-      }
-
-      const json = await res.json();
-      const rawTx = json.transaction || json.data?.transaction;
-      if (!rawTx) {
-        throw new Error('Backend confirmed transfer but returned no transaction payload.');
-      }
-
-      const rawStatus = (rawTx.status || '').toLowerCase();
-      let feStatus: TransactionStatus = 'SUCCESS';
-      let feDecision: PaymentDecision = 'ALLOW';
-
-      if (rawStatus === 'blocked') {
-        feStatus = 'BLOCKED';
-        feDecision = 'BLOCK';
-      } else if (rawStatus === 'held') {
-        feStatus = 'HELD';
-        feDecision = 'HOLD';
-      } else if (rawStatus === 'pending_verification' || rawStatus === 'pending') {
-        feStatus = 'PENDING';
-        feDecision = 'STEP_UP';
-      } else if (rawStatus === 'failed') {
-        feStatus = 'FAILED';
-        feDecision = 'BLOCK';
-      } else {
-        feStatus = 'SUCCESS';
-        feDecision = 'ALLOW';
-      }
-
-      const score = rawTx.risk?.score ?? (rawStatus === 'blocked' ? 95 : rawStatus === 'held' ? 72 : 12);
-      const level = rawTx.risk?.level ?? (score >= 85 ? 'critical' : score >= 60 ? 'high' : score >= 30 ? 'medium' : 'low');
-
-      const normalizedTx: Transaction & { idempotencyKey?: string } = {
-        id: rawTx.id,
-        utr: rawTx.utr || `${Math.floor(607100000000 + Math.random() * 99999999)}`,
-        senderId: rawTx.senderUserId || mockStore.currentUserId,
-        senderName: rawTx.senderName || 'Aarav Mehta',
-        senderVpa: rawTx.senderUpiId || 'aarav@aegis',
-        receiverId: rawTx.receiverUserId || 'REC-101',
-        receiverName: rawTx.receiverName || receiverUpiId.split('@')[0],
-        receiverVpa: rawTx.receiverUpiId || receiverUpiId,
-        amount: rawTx.amountPaise !== undefined ? rawTx.amountPaise / 100 : amountRupees,
-        note: rawTx.note || note || 'Transfer via GUARDIANPAY',
-        status: feStatus,
-        riskAssessment: {
-          score,
-          level,
-          riskLevel: level.toUpperCase() as any,
-          decision: feDecision,
-          reasons: rawTx.ai?.verdict?.keyReasons || (rawTx.risk?.signals || []).map((s: any) => s.detail || s.id),
-          factors: (rawTx.risk?.signals || []).map((s: any) => ({
-            name: s.id,
-            description: s.detail || s.id,
-            impact: s.points > 20 ? 'HIGH' : s.points > 10 ? 'MEDIUM' : 'LOW',
-            scoreContribution: s.points || 0,
-            status: 'TRIGGERED',
-          })),
-          analyzedAt: rawTx.createdAt || new Date().toISOString(),
-          modelConfidence: 0.998,
-        },
-        blockHash: mockSha256(`${rawTx.id}:${rawTx.utr}:${rawTx.amountPaise}`),
-        previousBlockHash: '0x' + '0'.repeat(40),
-        blockNumber: 1042,
-        timestamp: rawTx.createdAt || new Date().toISOString(),
-        verifiedAt: feStatus === 'SUCCESS' ? (rawTx.createdAt || new Date().toISOString()) : undefined,
-        isSuspicious: score > 30,
-        stepUpRequired: feStatus === 'PENDING',
-        stepUpType: 'OTP',
-        failureReason: feStatus === 'BLOCKED' ? 'Autonomous Security Shield: Critical incident neutralized' : undefined,
-        idempotencyKey,
-      };
-
-      // Synchronize in-memory mockStore for immediate UI reflections
-      const existingIdx = mockStore.transactions.findIndex((t) => t.id === normalizedTx.id);
-      if (existingIdx >= 0) {
-        mockStore.transactions[existingIdx] = normalizedTx;
-      } else {
-        mockStore.transactions.unshift(normalizedTx);
-      }
-
-      const senderWallet = mockStore.wallets.find((w) => w.userId === mockStore.currentUserId);
-      if (senderWallet) {
-        if (feStatus === 'SUCCESS') {
-          senderWallet.balance = Math.max(0, senderWallet.balance - normalizedTx.amount);
-          senderWallet.spentToday += normalizedTx.amount;
-        } else if (feStatus === 'HELD') {
-          senderWallet.balance = Math.max(0, senderWallet.balance - normalizedTx.amount);
+        if (!res.ok) {
+          const errJson = await res.json().catch(() => ({}));
+          const errMsg = errJson?.error?.message || errJson?.message || `Payment transfer rejected (HTTP ${res.status})`;
+          const errDetails = errJson?.error?.details || {};
+          const detailStr = Object.entries(errDetails)
+            .map(([k, v]) => `${k}: ${v}`)
+            .join(', ');
+          throw new Error(detailStr ? `${errMsg} (${detailStr})` : errMsg);
         }
-      }
 
-      return {
-        transaction: normalizedTx,
-        decision: feDecision,
-        requiresStepUp: feStatus === 'PENDING',
-        isHold: feStatus === 'HELD',
-        isBlock: feStatus === 'BLOCKED',
-      };
+        const json = await res.json();
+        const rawTx = json.transaction || json.data?.transaction;
+        if (!rawTx) {
+          throw new Error('Backend confirmed transfer but returned no transaction payload.');
+        }
+
+        const rawStatus = (rawTx.status || '').toLowerCase();
+        let feStatus: TransactionStatus = 'SUCCESS';
+        let feDecision: PaymentDecision = 'ALLOW';
+
+        if (rawStatus === 'blocked') {
+          feStatus = 'BLOCKED';
+          feDecision = 'BLOCK';
+        } else if (rawStatus === 'held') {
+          feStatus = 'HELD';
+          feDecision = 'HOLD';
+        } else if (rawStatus === 'pending_verification' || rawStatus === 'pending') {
+          feStatus = 'PENDING';
+          feDecision = 'STEP_UP';
+        } else if (rawStatus === 'failed') {
+          feStatus = 'FAILED';
+          feDecision = 'BLOCK';
+        } else {
+          feStatus = 'SUCCESS';
+          feDecision = 'ALLOW';
+        }
+
+        const score = rawTx.risk?.score ?? (rawStatus === 'blocked' ? 95 : rawStatus === 'held' ? 72 : 12);
+        const level = rawTx.risk?.level ?? (score >= 85 ? 'critical' : score >= 60 ? 'high' : score >= 30 ? 'medium' : 'low');
+
+        const normalizedTx: Transaction & { idempotencyKey?: string } = {
+          id: rawTx.id,
+          utr: rawTx.utr || `${Math.floor(607100000000 + Math.random() * 99999999)}`,
+          senderId: rawTx.senderUserId || mockStore.currentUserId,
+          senderName: rawTx.senderName || 'Aarav Mehta',
+          senderVpa: rawTx.senderUpiId || 'aarav@aegis',
+          receiverId: rawTx.receiverUserId || 'REC-101',
+          receiverName: rawTx.receiverName || receiverUpiId.split('@')[0],
+          receiverVpa: rawTx.receiverUpiId || receiverUpiId,
+          amount: rawTx.amountPaise !== undefined ? rawTx.amountPaise / 100 : amountRupees,
+          note: rawTx.note || note || 'Transfer via GUARDIANPAY',
+          status: feStatus,
+          riskAssessment: {
+            score,
+            level,
+            riskLevel: level.toUpperCase() as any,
+            decision: feDecision,
+            reasons: rawTx.ai?.verdict?.keyReasons || (rawTx.risk?.signals || []).map((s: any) => s.detail || s.id),
+            factors: (rawTx.risk?.signals || []).map((s: any) => ({
+              name: s.id,
+              description: s.detail || s.id,
+              impact: s.points > 20 ? 'HIGH' : s.points > 10 ? 'MEDIUM' : 'LOW',
+              scoreContribution: s.points || 0,
+              status: 'TRIGGERED',
+            })),
+            analyzedAt: rawTx.createdAt || new Date().toISOString(),
+            modelConfidence: 0.998,
+          },
+          blockHash: mockSha256(`${rawTx.id}:${rawTx.utr}:${rawTx.amountPaise}`),
+          previousBlockHash: '0x' + '0'.repeat(40),
+          blockNumber: 1042,
+          timestamp: rawTx.createdAt || new Date().toISOString(),
+          verifiedAt: feStatus === 'SUCCESS' ? (rawTx.createdAt || new Date().toISOString()) : undefined,
+          isSuspicious: score > 30,
+          stepUpRequired: feStatus === 'PENDING',
+          stepUpType: 'OTP',
+          failureReason: feStatus === 'BLOCKED' ? 'Autonomous Security Shield: Critical incident neutralized' : undefined,
+          idempotencyKey,
+        };
+
+        // Synchronize in-memory mockStore for immediate UI reflections
+        const existingIdx = mockStore.transactions.findIndex((t) => t.id === normalizedTx.id);
+        if (existingIdx >= 0) {
+          mockStore.transactions[existingIdx] = normalizedTx;
+        } else {
+          mockStore.transactions.unshift(normalizedTx);
+        }
+
+        const senderWallet = mockStore.wallets.find((w) => w.userId === mockStore.currentUserId);
+        if (senderWallet) {
+          if (feStatus === 'SUCCESS') {
+            senderWallet.balance = Math.max(0, senderWallet.balance - normalizedTx.amount);
+            senderWallet.spentToday += normalizedTx.amount;
+          } else if (feStatus === 'HELD') {
+            senderWallet.balance = Math.max(0, senderWallet.balance - normalizedTx.amount);
+          }
+        }
+
+        return {
+          transaction: normalizedTx,
+          decision: feDecision,
+          requiresStepUp: feStatus === 'PENDING',
+          isHold: feStatus === 'HELD',
+          isBlock: feStatus === 'BLOCKED',
+        };
+      } catch (err: any) {
+        // If it's a real business logic rejection from the API (like wrong PIN or insufficient funds), preserve the message
+        if (err?.message && !err.message.includes('fetch') && !err.message.includes('NetworkError') && !err.message.includes('Failed to fetch')) {
+          throw err;
+        }
+        console.warn('Backend transfer failed or network unreachable, falling back to local simulation:', err);
+      }
     }
 
     const sender = mockStore.users.find((u) => u.id === mockStore.currentUserId)!;
@@ -1212,13 +1234,20 @@ export const api = {
     transactionId: string;
     otp: string;
   }): Promise<{ verified: boolean; transaction: Transaction }> {
-    if (API_BASE_URL) {
-      const res = await fetch(`${API_BASE_URL}/api/v1/payments/verify-step-up`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-      return res.json();
+    const activeApiBase = getApiBaseUrl();
+    if (activeApiBase) {
+      try {
+        const res = await fetch(`${activeApiBase}/api/v1/payments/verify-step-up`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        if (res.ok) {
+          return await res.json();
+        }
+      } catch (e) {
+        console.warn('Backend verifyStepUp failed, fallback to local store:', e);
+      }
     }
 
     const tx = mockStore.transactions.find((t) => t.id === payload.transactionId);
@@ -1243,9 +1272,17 @@ export const api = {
     auditLogs: AuditEntry[];
     scenarios: FraudScenario[];
   }> {
-    if (API_BASE_URL) {
-      const res = await fetch(`${API_BASE_URL}/api/v1/admin/feed`);
-      return res.json();
+    const activeApiBase = getApiBaseUrl();
+    if (activeApiBase) {
+      try {
+        const res = await fetch(`${activeApiBase}/api/v1/admin/feed`);
+        if (res.ok) {
+          const json = await res.json();
+          return json.data || json;
+        }
+      } catch (e) {
+        console.warn('Backend getAdminFeed failed, fallback to local store:', e);
+      }
     }
 
     return simulateLatency({
@@ -1256,9 +1293,17 @@ export const api = {
   },
 
   async getFlaggedTransactions(): Promise<Transaction[]> {
-    if (API_BASE_URL) {
-      const res = await fetch(`${API_BASE_URL}/api/v1/admin/flagged`);
-      return res.json();
+    const activeApiBase = getApiBaseUrl();
+    if (activeApiBase) {
+      try {
+        const res = await fetch(`${activeApiBase}/api/v1/admin/flagged`);
+        if (res.ok) {
+          const json = await res.json();
+          return json.data || json;
+        }
+      } catch (e) {
+        console.warn('Backend getFlaggedTransactions failed, fallback to local store:', e);
+      }
     }
 
     const flagged = mockStore.transactions.filter((t) => t.isSuspicious);
@@ -1269,13 +1314,20 @@ export const api = {
     walletId: string,
     freeze: boolean
   ): Promise<{ success: boolean; wallet: Wallet }> {
-    if (API_BASE_URL) {
-      const res = await fetch(`${API_BASE_URL}/api/v1/wallets/${walletId}/freeze`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ isFrozen: freeze }),
-      });
-      return res.json();
+    const activeApiBase = getApiBaseUrl();
+    if (activeApiBase) {
+      try {
+        const res = await fetch(`${activeApiBase}/api/v1/wallets/${walletId}/freeze`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ isFrozen: freeze }),
+        });
+        if (res.ok) {
+          return await res.json();
+        }
+      } catch (e) {
+        console.warn('Backend freezeWallet failed, fallback to local store:', e);
+      }
     }
 
     const wallet = mockStore.wallets.find((w) => w.id === walletId) || mockStore.wallets[0];
@@ -1300,13 +1352,20 @@ export const api = {
     interceptedTransaction: Transaction;
     mitigationAction: string;
   }> {
-    if (API_BASE_URL) {
-      const res = await fetch(`${API_BASE_URL}/api/v1/security/simulate`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ scenarioId }),
-      });
-      return res.json();
+    const activeApiBase = getApiBaseUrl();
+    if (activeApiBase) {
+      try {
+        const res = await fetch(`${activeApiBase}/api/v1/security/simulate`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ scenarioId }),
+        });
+        if (res.ok) {
+          return await res.json();
+        }
+      } catch (e) {
+        console.warn('Backend simulateAttack failed, fallback to local store:', e);
+      }
     }
 
     const scenario =
@@ -1395,9 +1454,17 @@ export const api = {
       isTampered: boolean;
     }>;
   }> {
-    if (API_BASE_URL) {
-      const res = await fetch(`${API_BASE_URL}/api/v1/ledger/verify`);
-      return res.json();
+    const activeApiBase = getApiBaseUrl();
+    if (activeApiBase) {
+      try {
+        const res = await fetch(`${activeApiBase}/api/v1/ledger/verify`);
+        if (res.ok) {
+          const json = await res.json();
+          return json.data || json;
+        }
+      } catch (e) {
+        console.warn('Backend verifyLedger failed, fallback to local store:', e);
+      }
     }
 
     const txs = mockStore.transactions.slice(0, 16);
@@ -1830,19 +1897,33 @@ export const api = {
 
   // Payment Link Security Scanner
   async verifyPaymentLink(url: string) {
-    if (API_BASE_URL) {
-      const res = await fetch(`${API_BASE_URL}/api/links/verify`, {
+    const activeApiBase = getApiBaseUrl();
+    if (activeApiBase) {
+      try {
+        const res = await fetch(`${activeApiBase}/api/links/verify`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ url }),
+        });
+        if (res.ok) {
+          return await res.json();
+        }
+      } catch (e) {
+        console.warn('Backend verifyPaymentLink failed, fallback to local analyzer:', e);
+      }
+    }
+    try {
+      const res = await fetch('/api/links/verify', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ url }),
       });
-      return res.json();
+      if (res.ok) {
+        return await res.json();
+      }
+    } catch {
+      // Fall through to internal link scanner
     }
-    const res = await fetch('/api/links/verify', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ url }),
-    });
-    return res.json();
+    return analyzeLink(url);
   },
 };

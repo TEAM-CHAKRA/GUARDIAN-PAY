@@ -14,6 +14,7 @@
     "test:phase1": "node backend/scripts/testPhase1.js",
     "test:phase2": "node backend/scripts/testPhase2.js",
     "test:links": "node backend/scripts/testLinkSecurity.js",
+    "test:groq": "node backend/scripts/testGroqIntegration.js",
     "seed": "node backend/scripts/seed.js"
   }
 }
