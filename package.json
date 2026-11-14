@@ -1,0 +1,19 @@
+{
+  "name": "guardianpay",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Smart Digital Wallet with AI Fraud Protection — HackMatrix 2026",
+  "scripts": {
+    "dev": "npm --prefix frontend run dev",
+    "dev:backend": "node backend/src/server.js",
+    "build": "npm --prefix frontend run build",
+    "start": "npm --prefix frontend run start",
+    "lint": "npm --prefix frontend run lint",
+    "typecheck": "npm --prefix frontend run typecheck",
+    "test": "node backend/scripts/runComprehensiveQaAudit.js",
+    "test:phase1": "node backend/scripts/testPhase1.js",
+    "test:phase2": "node backend/scripts/testPhase2.js",
+    "test:links": "node backend/scripts/testLinkSecurity.js",
+    "seed": "node backend/scripts/seed.js"
+  }
+}
