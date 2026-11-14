@@ -1,0 +1,282 @@
+@import "tailwindcss";
+
+:root {
+  /* Official Brand Colour Palette */
+  --black-pearl: #1A2C30;
+  --blue-lagoon: #0E6873;
+  --burnt-orange: #FE7E3C;
+  --lust: #E4201B;
+  --copper: #61413C;
+
+  /* Surfaces & Backgrounds */
+  --background: #1A2C30;
+  --background-secondary: #122023;
+  --surface: #0E6873;
+  --surface-elevated: #16363B;
+  --surface-dark: #142326;
+  --surface-copper: #61413C;
+
+  /* Brand Semantic Aliases */
+  --primary: #FE7E3C;
+  --secondary: #0E6873;
+  --danger: #E4201B;
+  --accent-copper: #61413C;
+  --success: #10B981;
+  --warning: #FE7E3C;
+
+  /* Neutral Typography */
+  --text-primary: #F8F9FA;
+  --text-secondary: #C5BDB7;
+  --text-muted: #8A7E78;
+
+  /* Borders & Dividers */
+  --border: rgba(97, 65, 60, 0.35);
+  --border-active: rgba(254, 126, 60, 0.6);
+  --border-lagoon: rgba(14, 104, 115, 0.45);
+
+  --font-space-grotesk: 'Space Grotesk', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-inter: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+@theme {
+  --color-black-pearl: var(--black-pearl);
+  --color-blue-lagoon: var(--blue-lagoon);
+  --color-burnt-orange: var(--burnt-orange);
+  --color-lust: var(--lust);
+  --color-copper: var(--copper);
+
+  --color-background: var(--background);
+  --color-background-secondary: var(--background-secondary);
+  --color-surface: var(--surface);
+  --color-surface-elevated: var(--surface-elevated);
+  --color-surface-dark: var(--surface-dark);
+  --color-surface-copper: var(--surface-copper);
+
+  --color-primary: var(--primary);
+  --color-secondary: var(--secondary);
+  --color-danger: var(--danger);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+
+  --color-text-primary: var(--text-primary);
+  --color-text-secondary: var(--text-secondary);
+  --color-text-muted: var(--text-muted);
+
+  --color-border-cyber: var(--border);
+  --color-border-active: var(--border-active);
+  --color-border-lagoon: var(--border-lagoon);
+
+  --font-display: var(--font-space-grotesk);
+  --font-body: var(--font-inter);
+  --font-mono: var(--font-mono);
+}
+
+* {
+  border-color: var(--border);
+  box-sizing: border-box;
+}
+
+:focus-visible {
+  outline: 2px solid var(--burnt-orange);
+  outline-offset: 2px;
+}
+
+body {
+  background-color: var(--background);
+  color: var(--text-primary);
+  font-family: var(--font-inter), -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  overflow-x: hidden;
+  min-height: 100vh;
+}
+
+::selection {
+  background: rgba(254, 126, 60, 0.35);
+  color: #F8F9FA;
+}
+
+/* Custom Cyber-Fintech Glass Panels with Blue Lagoon & Copper */
+.glass-panel {
+  background: rgba(14, 104, 115, 0.18);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(97, 65, 60, 0.35);
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.45);
+}
+
+.glass-panel-elevated {
+  background: rgba(22, 54, 59, 0.65);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(14, 104, 115, 0.35);
+  box-shadow: 0 12px 40px 0 rgba(0, 0, 0, 0.55), 0 0 20px rgba(14, 104, 115, 0.12);
+}
+
+.glass-panel-copper {
+  background: rgba(97, 65, 60, 0.22);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(97, 65, 60, 0.45);
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.4);
+}
+
+/* Gradients */
+.text-gradient-primary {
+  background: linear-gradient(135deg, #FE7E3C 0%, #FF9F68 50%, #E4201B 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.text-gradient-lagoon {
+  background: linear-gradient(135deg, #0E6873 0%, #20A4B4 50%, #FE7E3C 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.text-gradient-silver {
+  background: linear-gradient(180deg, #F8F9FA 0%, #C5BDB7 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+/* Glow Utilities */
+.glow-orange-sm {
+  box-shadow: 0 0 15px rgba(254, 126, 60, 0.25);
+}
+
+.glow-orange-md {
+  box-shadow: 0 0 25px rgba(254, 126, 60, 0.4);
+}
+
+.glow-orange-border {
+  border-color: rgba(254, 126, 60, 0.55);
+  box-shadow: 0 0 16px rgba(254, 126, 60, 0.3);
+}
+
+.glow-lagoon-sm {
+  box-shadow: 0 0 15px rgba(14, 104, 115, 0.35);
+}
+
+.glow-lust-sm {
+  box-shadow: 0 0 15px rgba(228, 32, 27, 0.35);
+}
+
+/* Scanline and Noise CSS Overlay */
+.scanline-overlay {
+  background: linear-gradient(
+    rgba(26, 44, 48, 0) 50%, 
+    rgba(14, 104, 115, 0.02) 50%
+  );
+  background-size: 100% 4px;
+}
+
+/* Perspective Grid styling */
+.perspective-grid-container {
+  perspective: 600px;
+}
+
+.perspective-grid-plane {
+  background-image: 
+    linear-gradient(to right, rgba(14, 104, 115, 0.12) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(97, 65, 60, 0.1) 1px, transparent 1px);
+  background-size: 48px 48px;
+  transform: rotateX(60deg);
+  transform-origin: center top;
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: #1A2C30;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(14, 104, 115, 0.4);
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(254, 126, 60, 0.5);
+}
+
+/* Background Ambient Drift & Admin Scanline Animations */
+@keyframes driftSlow {
+  0%, 100% {
+    transform: translate(0, 0) scale(1);
+  }
+  25% {
+    transform: translate(45px, -35px) scale(1.06);
+  }
+  50% {
+    transform: translate(-30px, 40px) scale(0.96);
+  }
+  75% {
+    transform: translate(-50px, -20px) scale(1.04);
+  }
+}
+
+@keyframes driftReverse {
+  0%, 100% {
+    transform: translate(0, 0) scale(1);
+  }
+  25% {
+    transform: translate(-40px, 35px) scale(0.95);
+  }
+  50% {
+    transform: translate(35px, -30px) scale(1.05);
+  }
+  75% {
+    transform: translate(40px, 20px) scale(0.98);
+  }
+}
+
+@keyframes scanline8s {
+  0% {
+    top: -5%;
+    opacity: 0;
+  }
+  5% {
+    opacity: 1;
+  }
+  95% {
+    opacity: 1;
+  }
+  100% {
+    top: 105%;
+    opacity: 0;
+  }
+}
+
+.animate-drift-slow {
+  animation: driftSlow 40s ease-in-out infinite;
+}
+
+.animate-drift-reverse {
+  animation: driftReverse 40s ease-in-out infinite;
+}
+
+.animate-scanline-8s {
+  animation: scanline8s 8s linear infinite;
+}
+
+/* GlassCard Upgraded Depth with Inset Top Highlight */
+.glass-card-depth {
+  background: linear-gradient(180deg, rgba(14, 104, 115, 0.16) 0%, rgba(18, 32, 35, 0.85) 100%);
+  border: 1px solid rgba(97, 65, 60, 0.35);
+  box-shadow: inset 0 1px 0 rgba(248, 249, 250, 0.06), 0 10px 30px rgba(0, 0, 0, 0.5);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
